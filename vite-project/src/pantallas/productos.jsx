@@ -1,4 +1,4 @@
-import { useFetch } from '../hooks/usefetch'
+import useFetch from '../hooks/usefetch'
 import { useState } from 'react'
 import './producto.css'
 
