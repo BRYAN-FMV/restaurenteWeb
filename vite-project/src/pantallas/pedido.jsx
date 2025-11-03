@@ -10,7 +10,7 @@ const Pedidos = () => {
   const [showModal, setShowModal] = useState(false)
   const [modalType, setModalType] = useState('')
   const [selectedVenta, setSelectedVenta] = useState(null)
-  const [ventaDetalles, setVentaDetalles] = useState([]) // Nuevo estado para los detalles
+  const [ventaDetalles, setVentaDetalles] = useState([])
   
   const [formData, setFormData] = useState({
     cliente: '',
@@ -21,8 +21,8 @@ const Pedidos = () => {
   const [selectedProducto, setSelectedProducto] = useState('')
   const [cantidad, setCantidad] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filtroEntrega, setFiltroEntrega] = useState('') // Nuevo filtro por entrega
-  const [filtroFecha, setFiltroFecha] = useState('hoy') // Filtro por fecha (por defecto: hoy)
+  const [filtroEntrega, setFiltroEntrega] = useState('')
+  const [filtroFecha, setFiltroFecha] = useState('hoy')
 
   const reloadData = () => {
     setRefreshKey(prev => prev + 1)
@@ -37,17 +37,15 @@ const Pedidos = () => {
       )
       if (ventaActualizada && modalType === 'view') {
         setSelectedVenta(ventaActualizada)
-        // Forzar recarga de detalles cada vez que cambian los datos
         const timer = setTimeout(() => {
           cargarDetallesVenta(ventaActualizada._id || ventaActualizada.id)
-        }, 500) // Pequeño delay para asegurar que la DB se actualizó
+        }, 500)
         
         return () => clearTimeout(timer)
       }
     }
   }, [ventas, refreshKey])
 
-  // Función para recargar datos y detalles si hay una venta seleccionada
   const reloadDataAndDetails = async () => {
     reloadData()
   }
@@ -57,32 +55,61 @@ const Pedidos = () => {
     try {
       console.log('🔍 Cargando detalles para ventaId:', ventaId)
       
-      // Primero intentar con el endpoint específico
-      let response = await fetch(`http://localhost:5000/api/venta-detalle/venta/${ventaId}`)
-      let detallesVenta = []
-      
-      if (response.ok) {
-        detallesVenta = await response.json()
-        console.log('✅ Detalles obtenidos con endpoint específico:', detallesVenta)
-      } else {
-        console.log('⚠️ Endpoint específico no disponible, usando método alternativo')
-        // Método alternativo: cargar todos y filtrar
-        response = await fetch(`http://localhost:5000/api/venta-detalle`)
-        if (!response.ok) throw new Error('Error al cargar detalles')
+      // Usar endpoint específico con populate para obtener nombres de productos
+      const response = await fetch(`http://localhost:5000/api/venta-detalle/venta/${ventaId}`)
+      if (!response.ok) {
+        console.log('⚠️ Endpoint específico falló, usando método alternativo')
         
-        const todosLosDetalles = await response.json()
-        detallesVenta = todosLosDetalles.filter(detalle => detalle.ventaEncId === ventaId)
-        console.log('📋 Detalles filtrados:', detallesVenta)
+        // Método alternativo: obtener todos y filtrar
+        const responseAll = await fetch(`http://localhost:5000/api/venta-detalle`)
+        if (!responseAll.ok) throw new Error('Error al cargar detalles')
+        
+        const todosLosDetalles = await responseAll.json()
+        const detallesVenta = todosLosDetalles.filter(detalle => detalle.ventaEncId === ventaId)
+        
+        // Para cada detalle, buscar el producto si no está poblado
+        const detallesConNombres = await Promise.all(
+          detallesVenta.map(async (detalle) => {
+            if (typeof detalle.productoId === 'object' && detalle.productoId !== null) {
+              return {
+                ...detalle,
+                nombre: detalle.productoId.nombre || 'Producto sin nombre'
+              }
+            } else {
+              // Buscar el producto por ID
+              try {
+                const prodResponse = await fetch(`http://localhost:5000/api/productos/${detalle.productoId}`)
+                if (prodResponse.ok) {
+                  const producto = await prodResponse.json()
+                  return {
+                    ...detalle,
+                    nombre: producto.nombre || 'Producto sin nombre'
+                  }
+                }
+              } catch (error) {
+                console.error('Error buscando producto:', error)
+              }
+              
+              return {
+                ...detalle,
+                nombre: `Producto (ID: ${detalle.productoId})`
+              }
+            }
+          })
+        )
+        
+        console.log('🏷️ Detalles con nombres:', detallesConNombres)
+        setVentaDetalles(detallesConNombres)
+        return detallesConNombres
       }
       
-      // Enriquecer los detalles con información del producto
-      const detallesConNombres = detallesVenta.map(detalle => {
-        const producto = productos?.find(p => p._id === detalle.productoId)
-        return {
-          ...detalle,
-          nombre: producto ? producto.nombre : 'Producto no encontrado'
-        }
-      })
+      const detallesVenta = await response.json()
+      console.log('📋 Detalles obtenidos:', detallesVenta)
+      
+      const detallesConNombres = detallesVenta.map(detalle => ({
+        ...detalle,
+        nombre: detalle.productoId?.nombre || `Producto (ID: ${detalle.productoId})`
+      }))
       
       console.log('🏷️ Detalles con nombres:', detallesConNombres)
       setVentaDetalles(detallesConNombres)
@@ -94,121 +121,20 @@ const Pedidos = () => {
     }
   }
 
-  const opcionesEntrega = [
-    'domicilio 1',
-    'domicilio 2', 
-    'recoger en comedor',
-    'comer en el lugar'
-  ]
-
-  // Funciones auxiliares para fechas
-  const esHoy = (fecha) => {
-    const hoy = new Date()
-    const fechaVenta = new Date(fecha)
-    return fechaVenta.toDateString() === hoy.toDateString()
-  }
-
-  const esSemanaActual = (fecha) => {
-    const hoy = new Date()
-    const fechaVenta = new Date(fecha)
-    const inicioSemana = new Date(hoy)
-    inicioSemana.setDate(hoy.getDate() - hoy.getDay())
-    inicioSemana.setHours(0, 0, 0, 0)
-    
-    const finSemana = new Date(inicioSemana)
-    finSemana.setDate(inicioSemana.getDate() + 6)
-    finSemana.setHours(23, 59, 59, 999)
-    
-    return fechaVenta >= inicioSemana && fechaVenta <= finSemana
-  }
-
-  const esMesActual = (fecha) => {
-    const hoy = new Date()
-    const fechaVenta = new Date(fecha)
-    return fechaVenta.getMonth() === hoy.getMonth() && 
-           fechaVenta.getFullYear() === hoy.getFullYear()
-  }
-
-  const ventasFiltradas = ventas?.filter(venta => {
-    const coincideBusqueda = venta.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           venta.entrega.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const coincideEntrega = filtroEntrega === '' || venta.entrega === filtroEntrega
-    
-    // Filtro por fecha
-    let coincideFecha = true
-    if (filtroFecha === 'hoy') {
-      coincideFecha = esHoy(venta.fecha)
-    } else if (filtroFecha === 'semana') {
-      coincideFecha = esSemanaActual(venta.fecha)
-    } else if (filtroFecha === 'mes') {
-      coincideFecha = esMesActual(venta.fecha)
-    }
-    // Si filtroFecha === 'todos', no se aplica filtro (coincideFecha = true)
-    
-    return coincideBusqueda && coincideEntrega && coincideFecha
-  }) || []
-
-  // Calcular el total de las ventas filtradas
-  const calcularTotalFiltrado = () => {
-    return ventasFiltradas.reduce((total, venta) => total + venta.total, 0)
-  }
-
-  const openModal = async (type, venta = null) => {
-    setModalType(type)
-    setSelectedVenta(venta)
-    setVentaDetalles([]) // Limpiar detalles anteriores
-    
-    if (type === 'create') {
-      setFormData({
-        cliente: '',
-        entrega: 'recoger en comedor',
-        detalles: []
-      })
-    } else if (type === 'edit' && venta) {
-      // Cargar los detalles desde la base de datos para edición
-      const detalles = await cargarDetallesVenta(venta._id || venta.id)
-      
-      const detallesConNombres = detalles?.map(detalle => {
-        const producto = productos?.find(p => p._id === detalle.productoId)
-        return {
-          ...detalle,
-          nombre: producto ? producto.nombre : 'Producto no encontrado'
-        }
-      }) || []
-
-      setFormData({
-        cliente: venta.cliente,
-        entrega: venta.entrega,
-        detalles: detallesConNombres
-      })
-    } else if (type === 'view' && venta) {
-      // Cargar los detalles de la venta para mostrar en el modal de vista
-      await cargarDetallesVenta(venta._id || venta.id)
-    }
-    setShowModal(true)
-  }
-
-  const closeModal = () => {
-    setShowModal(false)
-    setModalType('')
-    setSelectedVenta(null)
-    setVentaDetalles([]) // Limpiar detalles cargados
-    setSelectedProducto('')
-    setCantidad(1)
-  }
-
-  const agregarProducto = () => {
+  // Función para agregar producto al pedido
+  const addProduct = () => {
     if (!selectedProducto || cantidad <= 0) return
 
-    const producto = productos.find(p => p._id === selectedProducto)
+    const producto = productos?.find(p => p._id === selectedProducto)
     if (!producto) return
 
     const nuevoDetalle = {
+      id: Date.now(),
       productoId: producto._id,
       nombre: producto.nombre,
-      cantidad: parseInt(cantidad),
-      precio: producto.precio
+      cantidad: cantidad,
+      precio: producto.precio,
+      observaciones: ''
     }
 
     setFormData(prev => ({
@@ -220,261 +146,329 @@ const Pedidos = () => {
     setCantidad(1)
   }
 
-  const removerProducto = (index) => {
+  const removeProduct = (index) => {
     setFormData(prev => ({
       ...prev,
       detalles: prev.detalles.filter((_, i) => i !== index)
     }))
   }
 
-  const calcularTotal = () => {
-    const total = formData.detalles.reduce((total, detalle) => 
-      total + (detalle.cantidad * detalle.precio), 0
-    )
-    return total
+  const updateObservaciones = (index, observaciones) => {
+    setFormData(prev => ({
+      ...prev,
+      detalles: prev.detalles.map((detalle, i) => 
+        i === index ? { ...detalle, observaciones } : detalle
+      )
+    }))
   }
 
-  const createVenta = async () => {
-    try {
-      if (!formData.cliente.trim()) {
-        alert('Por favor ingresa el nombre del cliente')
-        return
-      }
+  const calcularTotal = () => {
+    return formData.detalles.reduce((total, detalle) => total + (detalle.cantidad * detalle.precio), 0)
+  }
 
-      if (formData.detalles.length === 0) {
-        alert('Por favor agrega al menos un producto')
-        return
-      }
-
-      const total = calcularTotal()
-      
-      // Paso 1: Crear el encabezado de venta
-      const ventaEncabezadoData = {
-        cliente: formData.cliente,
-        entrega: formData.entrega,
-        total: total
-      }
-
-      const encabezadoResponse = await fetch('http://localhost:5000/api/venta-encabezado', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(ventaEncabezadoData)
+  const openModal = (type, venta = null) => {
+    setModalType(type)
+    setSelectedVenta(venta)
+    setShowModal(true)
+    
+    if (type === 'edit' && venta) {
+      setFormData({
+        cliente: venta.cliente,
+        entrega: venta.entrega,
+        detalles: []
       })
+      cargarDetallesVenta(venta._id || venta.id).then(detalles => {
+        const detallesParaEdicion = detalles.map(detalle => ({
+          id: Date.now() + Math.random(),
+          productoId: detalle.productoId,
+          nombre: detalle.nombre,
+          cantidad: detalle.cantidad,
+          precio: detalle.precio,
+          observaciones: detalle.observaciones || ''
+        }))
+        setFormData(prev => ({
+          ...prev,
+          detalles: detallesParaEdicion
+        }))
+      })
+    } else if (type === 'view' && venta) {
+      cargarDetallesVenta(venta._id || venta.id)
+    } else if (type === 'create') {
+      setFormData({
+        cliente: '',
+        entrega: 'recoger en comedor',
+        detalles: []
+      })
+      setVentaDetalles([])
+    }
+  }
 
-      if (!encabezadoResponse.ok) throw new Error('Error al crear el encabezado de venta')
-      
-      const ventaCreada = await encabezadoResponse.json()
-      const ventaId = ventaCreada._id || ventaCreada.id
+  const closeModal = () => {
+    setShowModal(false)
+    setModalType('')
+    setSelectedVenta(null)
+    setVentaDetalles([])
+    setFormData({
+      cliente: '',
+      entrega: 'recoger en comedor',
+      detalles: []
+    })
+  }
 
-      // Paso 2: Crear los detalles de venta
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!formData.cliente.trim()) {
+      alert('Por favor ingresa el nombre del cliente')
+      return
+    }
+    
+    if (formData.detalles.length === 0) {
+      alert('Por favor agrega al menos un producto')
+      return
+    }
+
+    const total = calcularTotal()
+    const ventaData = {
+      cliente: formData.cliente,
+      entrega: formData.entrega,
+      total: total,
+      fecha: new Date().toISOString()
+    }
+
+    try {
+      let ventaResponse
+      const ventaId = selectedVenta?._id || selectedVenta?.id
+
+      if (modalType === 'edit' && ventaId) {
+        ventaResponse = await fetch(`http://localhost:5000/api/venta-encabezado/${ventaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ventaData)
+        })
+      } else {
+        ventaResponse = await fetch('http://localhost:5000/api/venta-encabezado', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ventaData)
+        })
+      }
+
+      if (!ventaResponse.ok) {
+        throw new Error('Error al guardar la venta')
+      }
+
+      const ventaResult = await ventaResponse.json()
+      const finalVentaId = ventaResult.ventaId || ventaResult._id || ventaId
+
+      if (modalType === 'edit') {
+        const deleteResponse = await fetch(`http://localhost:5000/api/venta-detalle/venta/${finalVentaId}`, {
+          method: 'DELETE'
+        })
+        if (!deleteResponse.ok) {
+          console.warn('No se pudieron eliminar los detalles anteriores, pero continuamos...')
+        }
+      }
+
       for (const detalle of formData.detalles) {
         const detalleData = {
-          ventaEncId: ventaId,
+          ventaEncId: finalVentaId,
           productoId: detalle.productoId,
           cantidad: detalle.cantidad,
-          precio: detalle.precio
+          precio: detalle.precio,
+          observaciones: detalle.observaciones
         }
 
         const detalleResponse = await fetch('http://localhost:5000/api/venta-detalle', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(detalleData)
         })
 
         if (!detalleResponse.ok) {
-          console.error('Error al crear detalle de venta:', detalle)
-        }
-      }
-      
-      await reloadDataAndDetails()
-      closeModal()
-      alert('Venta creada exitosamente')
-    } catch (error) {
-      console.error('Error completo:', error)
-      alert('Error al crear la venta: ' + error.message)
-    }
-  }
-
-  const deleteVenta = async () => {
-    try {
-      const ventaId = selectedVenta._id || selectedVenta.id
-
-      // Paso 1: Eliminar detalles de venta (opcional)
-      // Nota: El endpoint para eliminar por ventaEncId necesita revisión en el backend
-      const deleteDetallesResponse = await fetch(`http://localhost:5000/api/venta-detalle/ventaEnc/${ventaId}`, {
-        method: 'DELETE'
-      })
-
-      if (!deleteDetallesResponse.ok) {
-        console.warn('No se pudieron eliminar los detalles de venta - continuando con eliminación del encabezado')
-      }
-
-      // Paso 2: Eliminar encabezado de venta
-      const deleteEncabezadoResponse = await fetch(`http://localhost:5000/api/venta-encabezado/${ventaId}`, {
-        method: 'DELETE'
-      })
-
-      if (!deleteEncabezadoResponse.ok) throw new Error('Error al eliminar venta')
-      
-      await reloadDataAndDetails()
-      closeModal()
-      alert('Venta eliminada exitosamente')
-    } catch (error) {
-      console.error('Error completo:', error)
-      alert('Error al eliminar la venta: ' + error.message)
-    }
-  }
-
-  const updateVenta = async () => {
-    try {
-      if (!formData.cliente.trim()) {
-        alert('Por favor ingresa el nombre del cliente')
-        return
-      }
-
-      if (formData.detalles.length === 0) {
-        alert('Por favor agrega al menos un producto')
-        return
-      }
-
-      const total = calcularTotal()
-      const ventaId = selectedVenta._id || selectedVenta.id
-
-      // Paso 1: Actualizar el encabezado de venta
-      const ventaEncabezadoData = {
-        cliente: formData.cliente,
-        entrega: formData.entrega,
-        total: total
-      }
-
-      const encabezadoResponse = await fetch(`http://localhost:5000/api/venta-encabezado/${ventaId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(ventaEncabezadoData)
-      })
-
-      if (!encabezadoResponse.ok) throw new Error('Error al actualizar el encabezado de venta')
-
-      // Paso 2: Obtener detalles existentes para hacer comparación
-      console.log(`Cargando detalles existentes para comparación...`)
-      const detallesExistentes = await cargarDetallesVenta(ventaId)
-      
-      // Paso 3: Eliminar detalles que ya no están en el formulario
-      for (const detalleExistente of detallesExistentes) {
-        const existeEnFormulario = formData.detalles.some(detalle => 
-          detalle.productoId === detalleExistente.productoId
-        )
-        
-        if (!existeEnFormulario) {
-          console.log(`Eliminando detalle para producto: ${detalleExistente.productoId}`)
-          try {
-            const deleteResponse = await fetch(`http://localhost:5000/api/venta-detalle/${detalleExistente._id}`, {
-              method: 'DELETE'
-            })
-            
-            if (!deleteResponse.ok) {
-              console.warn(`No se pudo eliminar el detalle ${detalleExistente._id}`)
-            }
-          } catch (error) {
-            console.warn(`Error al eliminar detalle individual:`, error)
-          }
+          console.error('Error al guardar detalle:', detalle)
         }
       }
 
-      // Paso 4: Crear o actualizar detalles del formulario
-      for (const detalle of formData.detalles) {
-        const detalleExistente = detallesExistentes.find(d => d.productoId === detalle.productoId)
+      alert(modalType === 'edit' ? '✅ Pedido actualizado exitosamente' : '✅ Pedido creado exitosamente')
+      closeModal()
+      reloadData()
+    } catch (error) {
+      console.error('Error al guardar pedido:', error)
+      alert('❌ Error al guardar el pedido')
+    }
+  }
+
+  // Función para verificar que no queden datos huérfanos
+  const verificarEliminacionCompleta = async (ventaId) => {
+    try {
+      // Verificar que no queden venta-detalle huérfanos
+      const response = await fetch(`http://localhost:5000/api/venta-detalle`)
+      if (response.ok) {
+        const todosLosDetalles = await response.json()
+        const detallesHuerfanos = todosLosDetalles.filter(detalle => detalle.ventaEncId === ventaId)
         
-        if (detalleExistente) {
-          // Actualizar detalle existente si cambió la cantidad o precio
-          if (detalleExistente.cantidad !== detalle.cantidad || detalleExistente.precio !== detalle.precio) {
-            console.log(`Actualizando detalle para producto: ${detalle.productoId}`)
-            
-            const updateData = {
-              cantidad: detalle.cantidad,
-              precio: detalle.precio
-            }
-            
+        if (detallesHuerfanos.length > 0) {
+          console.warn('⚠️ Se encontraron venta-detalle huérfanos:', detallesHuerfanos)
+          // Intentar eliminarlos uno por uno
+          for (const detalle of detallesHuerfanos) {
             try {
-              const updateResponse = await fetch(`http://localhost:5000/api/venta-detalle/${detalleExistente._id}`, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(updateData)
+              await fetch(`http://localhost:5000/api/venta-detalle/${detalle._id}`, {
+                method: 'DELETE'
               })
-              
-              if (!updateResponse.ok) {
-                console.warn(`No se pudo actualizar el detalle ${detalleExistente._id}`)
-              }
+              console.log('🗑️ Detalle huérfano eliminado:', detalle._id)
             } catch (error) {
-              console.warn(`Error al actualizar detalle:`, error)
+              console.error('❌ Error eliminando detalle huérfano:', error)
             }
           }
         } else {
-          // Crear nuevo detalle
-          console.log(`Creando nuevo detalle para producto: ${detalle.productoId}`)
-          
-          const detalleData = {
-            ventaEncId: ventaId,
-            productoId: detalle.productoId,
-            cantidad: detalle.cantidad,
-            precio: detalle.precio
-          }
-
-          try {
-            const detalleResponse = await fetch('http://localhost:5000/api/venta-detalle', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(detalleData)
-            })
-
-            if (!detalleResponse.ok) {
-              console.warn(`Error al crear detalle de venta para el producto: ${detalle.nombre}`)
-            }
-          } catch (error) {
-            console.warn(`Error al crear nuevo detalle:`, error)
-          }
+          console.log('✅ No se encontraron datos huérfanos')
         }
       }
+    } catch (error) {
+      console.error('❌ Error verificando eliminación:', error)
+    }
+  }
 
-      console.log(`Proceso de actualización completado`)
+  const handleDelete = async () => {
+    if (!selectedVenta) return
+
+    const confirmDelete = window.confirm(`¿Estás seguro de que quieres eliminar el pedido de ${selectedVenta.cliente}?`)
+    if (!confirmDelete) return
+
+    try {
+      const ventaId = selectedVenta._id || selectedVenta.id
+      console.log('🗑️ Iniciando eliminación de venta ID:', ventaId)
       
-      await reloadDataAndDetails()
+      // PASO 1: Eliminar primero todos los venta-detalle relacionados
+      console.log('🗑️ Eliminando venta-detalle...')
+      const deleteDetallesResponse = await fetch(`http://localhost:5000/api/venta-detalle/venta/${ventaId}`, {
+        method: 'DELETE'
+      })
       
-      // Forzar recarga adicional de detalles si estamos en modo vista
-      if (modalType === 'view' && selectedVenta) {
-        setTimeout(async () => {
-          console.log('Recargando detalles después de actualización...')
-          await cargarDetallesVenta(selectedVenta._id || selectedVenta.id)
-        }, 1000)
+      if (deleteDetallesResponse.ok) {
+        const deleteResult = await deleteDetallesResponse.text()
+        console.log('✅ Venta-detalle eliminados correctamente:', deleteResult)
+      } else {
+        const errorText = await deleteDetallesResponse.text()
+        console.warn('⚠️ Respuesta al eliminar detalles:', deleteDetallesResponse.status, errorText)
+        console.warn('⚠️ No se pudieron eliminar algunos detalles, continuando...')
       }
       
-      closeModal()
-      alert('Venta actualizada exitosamente. Los detalles se han sincronizado correctamente.')
+      // PASO 2: Eliminar el venta-encabezado
+      console.log('🗑️ Eliminando venta-encabezado...')
+      const deleteVentaResponse = await fetch(`http://localhost:5000/api/venta-encabezado/${ventaId}`, {
+        method: 'DELETE'
+      })
+      
+      if (deleteVentaResponse.ok) {
+        console.log('✅ Venta-encabezado eliminado correctamente')
+        
+        // Verificar que no queden datos huérfanos
+        await verificarEliminacionCompleta(ventaId)
+        
+        alert('✅ Pedido eliminado exitosamente (encabezado y detalles)')
+        closeModal()
+        reloadData() // Recargar la lista de ventas
+      } else {
+        throw new Error(`Error al eliminar venta-encabezado: ${deleteVentaResponse.status} - ${deleteVentaResponse.statusText}`)
+      }
     } catch (error) {
-      console.error('Error completo:', error)
-      alert('Error al actualizar la venta: ' + error.message)
+      console.error('❌ Error al eliminar venta:', error)
+      alert(`❌ Error al eliminar la venta: ${error.message}`)
     }
   }
 
   const formatearFecha = (fecha) => {
-    return new Date(fecha).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    const fechaObj = new Date(fecha)
+    const hoy = new Date()
+    const ayer = new Date(hoy)
+    ayer.setDate(hoy.getDate() - 1)
+
+    const esMismoDia = (fecha1, fecha2) => {
+      return fecha1.getDate() === fecha2.getDate() &&
+             fecha1.getMonth() === fecha2.getMonth() &&
+             fecha1.getFullYear() === fecha2.getFullYear()
+    }
+
+    if (esMismoDia(fechaObj, hoy)) {
+      return `Hoy, ${fechaObj.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
+    } else if (esMismoDia(fechaObj, ayer)) {
+      return `Ayer, ${fechaObj.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
+    } else {
+      return fechaObj.toLocaleDateString('es-MX', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
+  }
+
+  const filtrarVentasPorFecha = (ventas) => {
+    if (!ventas) return []
+    
+    const hoy = new Date()
+    const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())
+    const inicioSemana = new Date(hoy)
+    inicioSemana.setDate(hoy.getDate() - hoy.getDay())
+    inicioSemana.setHours(0, 0, 0, 0)
+    const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+    
+    return ventas.filter(venta => {
+      const fechaVenta = new Date(venta.fecha)
+      
+      switch(filtroFecha) {
+        case 'hoy':
+          return fechaVenta >= inicioHoy
+        case 'semana':
+          return fechaVenta >= inicioSemana
+        case 'mes':
+          return fechaVenta >= inicioMes
+        default:
+          return true
+      }
     })
   }
+
+  const ventasFiltradas = filtrarVentasPorFecha(ventas || []).filter(venta => {
+    const cumpleBusqueda = !searchTerm || 
+      venta.cliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      venta.entrega.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const cumpleEntrega = !filtroEntrega || venta.entrega === filtroEntrega
+    
+    return cumpleBusqueda && cumpleEntrega
+  })
+
+  const calcularTotalFiltrado = () => {
+    return ventasFiltradas.reduce((total, venta) => total + (venta.total || 0), 0)
+  }
+
+  // Opciones de entrega según el esquema de la base de datos
+  const opcionesEntrega = [
+    'domicilio 1',
+    'domicilio 2', 
+    'recoger en comedor',
+    'comer en el lugar'
+  ]
+
+  // Función para obtener el icono de entrega
+  const obtenerIconoEntrega = (tipoEntrega) => {
+    const iconos = {
+      'recoger en comedor': '🏪',
+      'comer en el lugar': '🍽️',
+      'domicilio 1': '🚗',
+      'domicilio 2': '🛵'
+    }
+    return iconos[tipoEntrega] || '🚚'
+  }
+
+  const productosFiltrados = productos?.filter(producto =>
+    producto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) && 
+    producto.disponibilidad === true
+  ) || []
 
   if (loadingVentas || loadingProductos) {
     return (
@@ -499,19 +493,17 @@ const Pedidos = () => {
               className="search-input"
             />
           </div>
-          <div className="filter-container">
+          <div className="filters-container">
             <select
               value={filtroFecha}
               onChange={(e) => setFiltroFecha(e.target.value)}
               className="filter-select"
             >
               <option value="hoy">📅 Hoy</option>
-              <option value="semana">📅 Esta Semana</option>
-              <option value="mes">📅 Este Mes</option>
-              <option value="todos">📅 Todas las fechas</option>
+              <option value="semana">📅 Esta semana</option>
+              <option value="mes">📅 Este mes</option>
+              <option value="todos">📅 Todos</option>
             </select>
-          </div>
-          <div className="filter-container">
             <select
               value={filtroEntrega}
               onChange={(e) => setFiltroEntrega(e.target.value)}
@@ -519,13 +511,17 @@ const Pedidos = () => {
             >
               <option value="">🚚 Todos los tipos de entrega</option>
               {opcionesEntrega.map(opcion => (
-                <option key={opcion} value={opcion}>{opcion}</option>
+                <option key={opcion} value={opcion}>
+                  {obtenerIconoEntrega(opcion)} {opcion.charAt(0).toUpperCase() + opcion.slice(1)}
+                </option>
               ))}
             </select>
           </div>
-          <button onClick={() => openModal('create')} className="btn-primary">
-            ➕ Nuevo Pedido
-          </button>
+          <div className="action-buttons">
+            <button onClick={() => openModal('create')} className="btn-primary">
+              ➕ Nuevo Pedido
+            </button>
+          </div>
         </div>
       </div>
 
@@ -543,7 +539,7 @@ const Pedidos = () => {
                filtroFecha === 'hoy' ? 'Ingresos Hoy' :
                filtroFecha === 'semana' ? 'Ingresos Semana' :
                filtroFecha === 'mes' ? 'Ingresos Mes' : 'Ingresos Totales'}</h3>
-          <p className="total-amount">${calcularTotalFiltrado().toFixed(2)}</p>
+          <p className="total-amount">{calcularTotalFiltrado().toFixed(2)}</p>
           <small className="ventas-count">
             {filtroEntrega ? 
               `${ventasFiltradas.length} ventas de ${filtroEntrega}` : 
@@ -566,7 +562,7 @@ const Pedidos = () => {
                 <span className="venta-fecha">{formatearFecha(venta.fecha)}</span>
               </div>
               <div className="venta-info">
-                <p><strong>Entrega:</strong> {venta.entrega}</p>
+                <p><strong>Entrega:</strong> {obtenerIconoEntrega(venta.entrega)} {venta.entrega.charAt(0).toUpperCase() + venta.entrega.slice(1)}</p>
                 <p><strong>Total:</strong> <span className="total">${venta.total.toFixed(2)}</span></p>
               </div>
               <div className="venta-actions">
@@ -610,180 +606,156 @@ const Pedidos = () => {
                     <input
                       type="text"
                       value={formData.cliente}
-                      onChange={(e) => setFormData({...formData, cliente: e.target.value})}
+                      onChange={(e) => setFormData(prev => ({ ...prev, cliente: e.target.value }))}
                       placeholder="Nombre del cliente"
+                      required
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Tipo de Entrega:</label>
+                    <label>Tipo de entrega:</label>
                     <select
                       value={formData.entrega}
-                      onChange={(e) => setFormData({...formData, entrega: e.target.value})}
+                      onChange={(e) => setFormData(prev => ({ ...prev, entrega: e.target.value }))}
                     >
-                      {opcionesEntrega.map(opcion => (
-                        <option key={opcion} value={opcion}>{opcion}</option>
-                      ))}
+                      <option value="recoger en comedor">🏪 Recoger en comedor</option>
+                      <option value="comer en el lugar">🍽️ Comer en el lugar</option>
+                      <option value="domicilio 1">🚶‍♀️ Domicilio 1</option>
+                      <option value="domicilio 2">🛵 Domicilio 2</option>
                     </select>
                   </div>
 
                   <div className="productos-section">
-                    <h3>Agregar Productos</h3>
+                    <h3>Productos del pedido:</h3>
                     
-                    <div className="add-producto-form">
+                    <div className="add-product-form">
                       <select
                         value={selectedProducto}
                         onChange={(e) => setSelectedProducto(e.target.value)}
                       >
-                        <option value="">Seleccionar producto disponible...</option>
-                        {productos?.filter(p => p.disponibilidad).map(producto => (
+                        <option value="">Seleccionar producto...</option>
+                        {productos?.filter(producto => producto.disponibilidad === true).map(producto => (
                           <option key={producto._id} value={producto._id}>
-                            ✅ {producto.nombre} - ${producto.precio}
+                            {producto.nombre} - ${producto.precio}
                           </option>
                         ))}
                       </select>
+                      
                       <input
                         type="number"
                         min="1"
                         value={cantidad}
-                        onChange={(e) => setCantidad(e.target.value)}
+                        onChange={(e) => setCantidad(parseInt(e.target.value) || 1)}
                         placeholder="Cantidad"
                       />
-                      <button type="button" onClick={agregarProducto} className="btn-secondary">
+                      
+                      <button type="button" onClick={addProduct} className="btn-add">
                         ➕ Agregar
                       </button>
                     </div>
-                  </div>
 
-                  {formData.detalles.length > 0 && (
-                    <div className="detalles-pedido">
-                      <h3>Productos en el Pedido</h3>
-                      <div className="detalles-list">
-                        {formData.detalles.map((detalle, index) => (
-                          <div key={index} className="detalle-item">
-                            <span>{detalle.nombre}</span>
-                            <span>Cantidad: {detalle.cantidad}</span>
-                            <span>Precio: ${detalle.precio}</span>
-                            <span>Subtotal: ${(detalle.cantidad * detalle.precio).toFixed(2)}</span>
-                            <button 
-                              onClick={() => removerProducto(index)}
-                              className="btn-danger btn-small"
-                            >
-                              ✕
-                            </button>
+                    <div className="productos-list">
+                      {formData.detalles.map((detalle, index) => (
+                        <div key={detalle.id} className="producto-item">
+                          <div className="producto-info">
+                            <span className="producto-nombre">{detalle.nombre}</span>
+                            <span className="producto-cantidad">Cantidad: {detalle.cantidad}</span>
+                            <span className="producto-precio">Precio: ${detalle.precio}</span>
+                            <span className="producto-subtotal">Subtotal: ${(detalle.cantidad * detalle.precio).toFixed(2)}</span>
                           </div>
-                        ))}
-                      </div>
-                      <div className="total-pedido">
-                        <strong>Total: ${calcularTotal().toFixed(2)}</strong>
-                      </div>
+                          <div className="producto-observaciones">
+                            <input
+                              type="text"
+                              placeholder="Observaciones (opcional)"
+                              value={detalle.observaciones}
+                              onChange={(e) => updateObservaciones(index, e.target.value)}
+                            />
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={() => removeProduct(index)}
+                            className="btn-remove"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  )}
+
+                    <div className="total-section">
+                      <h3>Total: ${calcularTotal().toFixed(2)}</h3>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {modalType === 'view' && selectedVenta && (
-                <div className="venta-details">
-                  <div className="detail-row">
-                    <strong>Cliente:</strong> {selectedVenta.cliente}
+                <div className="view-container">
+                  <div className="venta-info-detailed">
+                    <p><strong>Cliente:</strong> {selectedVenta.cliente}</p>
+                    <p><strong>Fecha:</strong> {formatearFecha(selectedVenta.fecha)}</p>
+                    <p><strong>Entrega:</strong> {selectedVenta.entrega}</p>
+                    <p><strong>Total:</strong> ${selectedVenta.total.toFixed(2)}</p>
                   </div>
-                  <div className="detail-row">
-                    <strong>Fecha:</strong> {formatearFecha(selectedVenta.fecha)}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Entrega:</strong> {selectedVenta.entrega}
-                  </div>
-                  <div className="detail-row">
-                    <strong>Total:</strong> <span className="total">${selectedVenta.total.toFixed(2)}</span>
-                  </div>
-                  {ventaDetalles && ventaDetalles.length > 0 ? (
-                    <div className="detalles-venta" style={{
-                      marginTop: '1rem'
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3>Productos: ({ventaDetalles.length} productos)</h3>
-                        <button 
-                          onClick={() => cargarDetallesVenta(selectedVenta._id || selectedVenta.id)}
-                          style={{
-                            background: '#ffc107',
-                            color: '#000',
-                            border: 'none',
-                            padding: '0.5rem 1rem',
-                            borderRadius: '5px',
-                            cursor: 'pointer',
-                            fontSize: '0.8rem'
-                          }}
-                        >
-                          🔄 Actualizar
-                        </button>
-                      </div>
-                      <div>
+
+                  <div className="detalles-section">
+                    <h3>Productos del pedido:</h3>
+                    {ventaDetalles.length > 0 ? (
+                      <div className="detalles-list">
                         {ventaDetalles.map((detalle, index) => (
-                          <div key={`${detalle._id}-${Date.now()}-${index}`} style={{
-                            color: '#2d3748', 
-                            backgroundColor: 'rgba(255,255,255,0.95)', 
-                            border: '2px solid #FFD700',
-                            padding: '1rem',
-                            margin: '0.5rem 0',
-                            borderRadius: '8px',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                          }}>
-                            <div style={{color: '#2d3748', fontWeight: 'bold', fontSize: '1rem'}}>📦 {detalle.nombre}</div>
-                            <div style={{color: '#4a5568', margin: '0.25rem 0'}}>🔢 Cantidad: {detalle.cantidad}</div>
-                            <div style={{color: '#4a5568', margin: '0.25rem 0'}}>💰 Precio: ${detalle.precio.toFixed(2)}</div>
-                            <div style={{color: '#27ae60', fontWeight: 'bold', fontSize: '1.1rem', marginTop: '0.5rem'}}>💵 Subtotal: ${(detalle.cantidad * detalle.precio).toFixed(2)}</div>
+                          <div key={index} className="detalle-item">
+                            <span className="detalle-nombre">{detalle.nombre}</span>
+                            <span className="detalle-cantidad">x{detalle.cantidad}</span>
+                            <span className="detalle-precio">${detalle.precio.toFixed(2)}</span>
+                            <span className="detalle-subtotal">${(detalle.cantidad * detalle.precio).toFixed(2)}</span>
+                            {detalle.observaciones && (
+                              <span className="detalle-observaciones">Obs: {detalle.observaciones}</span>
+                            )}
                           </div>
                         ))}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="detalles-venta">
-                      <h3>Productos:</h3>
-                      <p style={{textAlign: 'center', color: '#999', fontStyle: 'italic'}}>
-                        {ventaDetalles.length === 0 ? 'Cargando detalles...' : 'No hay productos en esta venta'}
-                      </p>
-                    </div>
-                  )}
+                    ) : (
+                      <p>Cargando detalles...</p>
+                    )}
+                  </div>
                 </div>
               )}
 
               {modalType === 'delete' && selectedVenta && (
-                <div className="delete-confirmation">
-                  <p>¿Estás seguro de que deseas eliminar este pedido?</p>
-                  <div className="venta-info">
-                    <p><strong>Cliente:</strong> {selectedVenta.cliente}</p>
-                    <p><strong>Total:</strong> ${selectedVenta.total.toFixed(2)}</p>
-                    <p><strong>Fecha:</strong> {formatearFecha(selectedVenta.fecha)}</p>
-                  </div>
-                  <p className="warning">Esta acción no se puede deshacer.</p>
+                <div className="delete-container">
+                  <p>¿Estás seguro de que quieres eliminar el pedido de <strong>{selectedVenta.cliente}</strong>?</p>
+                  <p>Esta acción no se puede deshacer.</p>
                 </div>
               )}
             </div>
 
             <div className="modal-footer">
-              {modalType === 'create' && (
+              {(modalType === 'create' || modalType === 'edit') && (
                 <>
-                  <button onClick={closeModal} className="btn-secondary">Cancelar</button>
-                  <button onClick={createVenta} className="btn-primary">Crear Pedido</button>
+                  <button onClick={closeModal} className="btn-secondary">
+                    Cancelar
+                  </button>
+                  <button onClick={handleSubmit} className="btn-primary">
+                    {modalType === 'create' ? 'Crear Pedido' : 'Actualizar Pedido'}
+                  </button>
                 </>
               )}
 
-              {modalType === 'edit' && (
-                <>
-                  <button onClick={closeModal} className="btn-secondary">Cancelar</button>
-                  <button onClick={updateVenta} className="btn-primary">Actualizar Pedido</button>
-                </>
+              {modalType === 'view' && (
+                <button onClick={closeModal} className="btn-secondary">
+                  Cerrar
+                </button>
               )}
-              
+
               {modalType === 'delete' && (
                 <>
-                  <button onClick={closeModal} className="btn-secondary">Cancelar</button>
-                  <button onClick={deleteVenta} className="btn-danger">Eliminar</button>
+                  <button onClick={closeModal} className="btn-secondary">
+                    Cancelar
+                  </button>
+                  <button onClick={handleDelete} className="btn-danger">
+                    Sí, Eliminar
+                  </button>
                 </>
-              )}
-              
-              {modalType === 'view' && (
-                <button onClick={closeModal} className="btn-primary">Cerrar</button>
               )}
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Sidebar from '../componentes/sidebar'
 import Productos from '../pantallas/productos'
+import Pedidos from '../pantallas/pedido'
 import './Layout.css'
 
 function Layout() {
@@ -44,12 +45,7 @@ function Layout() {
           </div>
         )
       case 'pedidos':
-        return (
-          <div className="content-section">
-            <h1>📋 Gestión de Pedidos</h1>
-            <p>Aquí puedes ver y gestionar los pedidos...</p>
-          </div>
-        )
+        return <Pedidos />
       case 'clientes':
         return (
           <div className="content-section">
