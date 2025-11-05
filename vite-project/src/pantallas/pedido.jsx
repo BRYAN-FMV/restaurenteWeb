@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react'
+import { PDFDownloadLink, pdf } from '@react-pdf/renderer'
 import useFetch from '../hooks/usefetch'
+import TicketPDF from '../componentes/TicketPDF'
+import { getApiUrl } from '../config/api.js'
 import './pedido.css'
 
 const Pedidos = () => {
   const [refreshKey, setRefreshKey] = useState(0)
-  const { data: productos, loading: loadingProductos } = useFetch(`http://localhost:5000/api/productos?refresh=${refreshKey}`)
-  const { data: ventas, loading: loadingVentas } = useFetch(`http://localhost:5000/api/venta-encabezado?refresh=${refreshKey}`)
+  const { data: productos, loading: loadingProductos } = useFetch(`${getApiUrl('/api/productos')}?refresh=${refreshKey}`)
+  const { data: ventas, loading: loadingVentas } = useFetch(`${getApiUrl('/api/venta-encabezado')}?refresh=${refreshKey}`)
   
   const [showModal, setShowModal] = useState(false)
   const [modalType, setModalType] = useState('')
   const [selectedVenta, setSelectedVenta] = useState(null)
   const [ventaDetalles, setVentaDetalles] = useState([])
+  const [ultimaVentaCreada, setUltimaVentaCreada] = useState(null)
   
   const [formData, setFormData] = useState({
     cliente: '',
@@ -23,6 +27,7 @@ const Pedidos = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [filtroEntrega, setFiltroEntrega] = useState('')
   const [filtroFecha, setFiltroFecha] = useState('hoy')
+  const [shouldPrintAfterSave, setShouldPrintAfterSave] = useState(false)
 
   const reloadData = () => {
     setRefreshKey(prev => prev + 1)
@@ -56,12 +61,12 @@ const Pedidos = () => {
       console.log('🔍 Cargando detalles para ventaId:', ventaId)
       
       // Usar endpoint específico con populate para obtener nombres de productos
-      const response = await fetch(`http://localhost:5000/api/venta-detalle/venta/${ventaId}`)
+      const response = await fetch(getApiUrl(`/api/venta-detalle/venta/${ventaId}`))
       if (!response.ok) {
         console.log('⚠️ Endpoint específico falló, usando método alternativo')
         
         // Método alternativo: obtener todos y filtrar
-        const responseAll = await fetch(`http://localhost:5000/api/venta-detalle`)
+        const responseAll = await fetch(getApiUrl('/api/venta-detalle'))
         if (!responseAll.ok) throw new Error('Error al cargar detalles')
         
         const todosLosDetalles = await responseAll.json()
@@ -78,7 +83,7 @@ const Pedidos = () => {
             } else {
               // Buscar el producto por ID
               try {
-                const prodResponse = await fetch(`http://localhost:5000/api/productos/${detalle.productoId}`)
+                const prodResponse = await fetch(getApiUrl(`/api/productos/${detalle.productoId}`))
                 if (prodResponse.ok) {
                   const producto = await prodResponse.json()
                   return {
@@ -172,20 +177,23 @@ const Pedidos = () => {
     setShowModal(true)
     
     if (type === 'edit' && venta) {
+      console.log('✏️ Abriendo modal de edición para venta:', venta._id || venta.id)
       setFormData({
         cliente: venta.cliente,
         entrega: venta.entrega,
         detalles: []
       })
       cargarDetallesVenta(venta._id || venta.id).then(detalles => {
+        console.log('📋 Detalles cargados para edición:', detalles)
         const detallesParaEdicion = detalles.map(detalle => ({
           id: Date.now() + Math.random(),
           productoId: detalle.productoId,
           nombre: detalle.nombre,
           cantidad: detalle.cantidad,
           precio: detalle.precio,
-          observaciones: detalle.observaciones || ''
+          observaciones: '' // ← Siempre vacío desde BD
         }))
+        console.log('✏️ Detalles preparados para edición:', detallesParaEdicion)
         setFormData(prev => ({
           ...prev,
           detalles: detallesParaEdicion
@@ -194,6 +202,7 @@ const Pedidos = () => {
     } else if (type === 'view' && venta) {
       cargarDetallesVenta(venta._id || venta.id)
     } else if (type === 'create') {
+      setUltimaVentaCreada(null) // Resetear la última venta creada
       setFormData({
         cliente: '',
         entrega: 'recoger en comedor',
@@ -208,6 +217,7 @@ const Pedidos = () => {
     setModalType('')
     setSelectedVenta(null)
     setVentaDetalles([])
+    setUltimaVentaCreada(null) // Resetear al cerrar modal
     setFormData({
       cliente: '',
       entrega: 'recoger en comedor',
@@ -217,14 +227,22 @@ const Pedidos = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+    await saveOrder(false) // No imprimir automáticamente
+  }
+
+  const handleSaveAndPrint = async (e) => {
+    e.preventDefault()
+    await saveOrder(true) // Imprimir automáticamente después de guardar
+  }
+
+  const saveOrder = async (shouldPrint = false) => {
     if (!formData.cliente.trim()) {
-      alert('Por favor ingresa el nombre del cliente')
+      alert('❌ Por favor ingresa el nombre del cliente')
       return
     }
     
     if (formData.detalles.length === 0) {
-      alert('Por favor agrega al menos un producto')
+      alert('❌ Agrega al menos un producto al pedido')
       return
     }
 
@@ -241,13 +259,13 @@ const Pedidos = () => {
       const ventaId = selectedVenta?._id || selectedVenta?.id
 
       if (modalType === 'edit' && ventaId) {
-        ventaResponse = await fetch(`http://localhost:5000/api/venta-encabezado/${ventaId}`, {
+        ventaResponse = await fetch(getApiUrl(`/api/venta-encabezado/${ventaId}`), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(ventaData)
         })
       } else {
-        ventaResponse = await fetch('http://localhost:5000/api/venta-encabezado', {
+        ventaResponse = await fetch(getApiUrl('/api/venta-encabezado'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(ventaData)
@@ -262,35 +280,124 @@ const Pedidos = () => {
       const finalVentaId = ventaResult.ventaId || ventaResult._id || ventaId
 
       if (modalType === 'edit') {
-        const deleteResponse = await fetch(`http://localhost:5000/api/venta-detalle/venta/${finalVentaId}`, {
-          method: 'DELETE'
-        })
-        if (!deleteResponse.ok) {
-          console.warn('No se pudieron eliminar los detalles anteriores, pero continuamos...')
+        console.log('🗑️ Eliminando detalles anteriores para ventaId:', finalVentaId)
+        console.log('🔍 Modal type actual:', modalType)
+        console.log('🔍 Venta seleccionada:', selectedVenta)
+        
+        // Primero obtenemos los detalles existentes usando el endpoint correcto
+        const detallesResponse = await fetch(getApiUrl(`/api/venta-detalle/venta/${finalVentaId}`))
+        if (detallesResponse.ok) {
+          const detallesExistentes = await detallesResponse.json()
+          console.log('📋 Detalles encontrados para eliminar:', detallesExistentes.length)
+          console.log('📋 Lista de detalles:', detallesExistentes)
+          
+          // Eliminar cada detalle individualmente usando el endpoint DELETE /:id
+          let eliminacionExitosa = true
+          for (const detalle of detallesExistentes) {
+            try {
+              console.log('🗑️ Eliminando detalle ID:', detalle._id)
+              const deleteResponse = await fetch(getApiUrl(`/api/venta-detalle/${detalle._id}`), {
+                method: 'DELETE'
+              })
+              if (deleteResponse.ok) {
+                console.log('✅ Detalle eliminado exitosamente:', detalle._id)
+              } else {
+                console.warn('⚠️ No se pudo eliminar detalle:', detalle._id, 'Status:', deleteResponse.status)
+                const errorText = await deleteResponse.text()
+                console.warn('Error del servidor:', errorText)
+                eliminacionExitosa = false
+              }
+            } catch (error) {
+              console.error('❌ Error eliminando detalle individual:', detalle._id, error)
+              eliminacionExitosa = false
+            }
+          }
+          
+          if (eliminacionExitosa) {
+            console.log('✅ Todos los detalles anteriores eliminados exitosamente')
+          } else {
+            console.warn('⚠️ Algunos detalles no se pudieron eliminar completamente')
+          }
+          
+          // Pequeña pausa para asegurar que la eliminación se complete
+          await new Promise(resolve => setTimeout(resolve, 100))
+        } else {
+          const errorText = await detallesResponse.text()
+          console.error('❌ Error al obtener detalles existentes:', errorText)
         }
+      } else {
+        console.log('📝 Creando nueva venta, no se eliminan detalles previos')
       }
 
+      console.log('💾 Guardando nuevos detalles:', formData.detalles.length, 'elementos')
+      
       for (const detalle of formData.detalles) {
         const detalleData = {
           ventaEncId: finalVentaId,
           productoId: detalle.productoId,
           cantidad: detalle.cantidad,
-          precio: detalle.precio,
-          observaciones: detalle.observaciones
+          precio: detalle.precio
+          // observaciones: detalle.observaciones  // ← No se envían a BD
         }
 
-        const detalleResponse = await fetch('http://localhost:5000/api/venta-detalle', {
+        console.log('📦 Guardando detalle:', detalleData)
+
+        const detalleResponse = await fetch(getApiUrl('/api/venta-detalle'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(detalleData)
         })
 
         if (!detalleResponse.ok) {
-          console.error('Error al guardar detalle:', detalle)
+          console.error('❌ Error al guardar detalle:', detalle)
+          const errorText = await detalleResponse.text()
+          console.error('Error del servidor:', errorText)
+        } else {
+          const resultado = await detalleResponse.json()
+          console.log('✅ Detalle guardado:', resultado)
         }
       }
 
       alert(modalType === 'edit' ? '✅ Pedido actualizado exitosamente' : '✅ Pedido creado exitosamente')
+      
+      // Crear los datos de la venta para el PDF/impresión
+      const ventaParaPDF = {
+        _id: finalVentaId,
+        cliente: formData.cliente,
+        entrega: formData.entrega,
+        total: total,
+        fecha: new Date().toISOString(),
+        detalles: formData.detalles
+      }
+
+      // Si es creación, guardar los datos para el PDF
+      if (modalType === 'create') {
+        setUltimaVentaCreada(ventaParaPDF)
+      }
+
+      // Si se debe imprimir después de guardar
+      if (shouldPrint) {
+        console.log('🖨️ Generando PDF para abrir automáticamente...')
+        try {
+          const blob = await pdf(<TicketPDF venta={ventaParaPDF} />).toBlob()
+          const url = URL.createObjectURL(blob)
+          
+          // Abrir el PDF en una nueva pestaña
+          window.open(url, '_blank')
+          
+          // Limpiar la URL después de un tiempo para liberar memoria
+          setTimeout(() => {
+            URL.revokeObjectURL(url)
+          }, 1000)
+          
+          console.log('✅ PDF generado y abierto automáticamente')
+          alert('🖨️ Pedido guardado y PDF abierto para imprimir')
+        } catch (error) {
+          console.error('❌ Error al generar PDF:', error)
+          alert('⚠️ Pedido guardado, pero hubo un error al generar el PDF')
+        }
+      }
+      
       closeModal()
       reloadData()
     } catch (error) {
@@ -303,7 +410,7 @@ const Pedidos = () => {
   const verificarEliminacionCompleta = async (ventaId) => {
     try {
       // Verificar que no queden venta-detalle huérfanos
-      const response = await fetch(`http://localhost:5000/api/venta-detalle`)
+      const response = await fetch(getApiUrl('/api/venta-detalle'))
       if (response.ok) {
         const todosLosDetalles = await response.json()
         const detallesHuerfanos = todosLosDetalles.filter(detalle => detalle.ventaEncId === ventaId)
@@ -313,7 +420,7 @@ const Pedidos = () => {
           // Intentar eliminarlos uno por uno
           for (const detalle of detallesHuerfanos) {
             try {
-              await fetch(`http://localhost:5000/api/venta-detalle/${detalle._id}`, {
+              await fetch(getApiUrl(`/api/venta-detalle/${detalle._id}`), {
                 method: 'DELETE'
               })
               console.log('🗑️ Detalle huérfano eliminado:', detalle._id)
@@ -342,7 +449,7 @@ const Pedidos = () => {
       
       // PASO 1: Eliminar primero todos los venta-detalle relacionados
       console.log('🗑️ Eliminando venta-detalle...')
-      const deleteDetallesResponse = await fetch(`http://localhost:5000/api/venta-detalle/venta/${ventaId}`, {
+      const deleteDetallesResponse = await fetch(getApiUrl(`/api/venta-detalle/venta/${ventaId}`), {
         method: 'DELETE'
       })
       
@@ -357,7 +464,7 @@ const Pedidos = () => {
       
       // PASO 2: Eliminar el venta-encabezado
       console.log('🗑️ Eliminando venta-encabezado...')
-      const deleteVentaResponse = await fetch(`http://localhost:5000/api/venta-encabezado/${ventaId}`, {
+      const deleteVentaResponse = await fetch(getApiUrl(`/api/venta-encabezado/${ventaId}`), {
         method: 'DELETE'
       })
       
@@ -403,6 +510,66 @@ const Pedidos = () => {
         hour: '2-digit',
         minute: '2-digit'
       })
+    }
+  }
+
+  // Función para generar y descargar PDF
+  const generarTicketPDF = async (venta, detalles) => {
+    try {
+      console.log('� Generando PDF para ticket...')
+      
+      // Generar el PDF
+      const pdfBlob = await pdf(<TicketPDF venta={venta} detalles={detalles} />).toBlob()
+      
+      // Crear URL del blob y descargar
+      const url = URL.createObjectURL(pdfBlob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ticket-${venta.cliente}-${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      
+      console.log('✅ PDF generado y descargado correctamente')
+    } catch (error) {
+      console.error('❌ Error al generar PDF:', error)
+      alert(`❌ Error al generar PDF: ${error.message}`)
+    }
+  }
+
+  // Función para abrir PDF en nueva ventana
+  const verTicketPDF = async (venta, detalles) => {
+    try {
+      console.log('�️ Abriendo PDF en nueva ventana...')
+      
+      // Generar el PDF
+      const pdfBlob = await pdf(<TicketPDF venta={venta} detalles={detalles} />).toBlob()
+      
+      // Crear URL del blob y abrir en nueva ventana
+      const url = URL.createObjectURL(pdfBlob)
+      window.open(url, '_blank')
+      
+      console.log('✅ PDF abierto en nueva ventana')
+    } catch (error) {
+      console.error('❌ Error al abrir PDF:', error)
+      alert(`❌ Error al abrir PDF: ${error.message}`)
+    }
+  }
+
+  // Función para generar PDF de la última venta creada
+  const generarPDFUltimaVenta = async () => {
+    if (!ultimaVentaCreada) {
+      alert('No hay ninguna venta recién creada para generar PDF')
+      return
+    }
+    
+    try {
+      console.log('🗃️ Generando PDF de la venta recién creada...')
+      await verTicketPDF(ultimaVentaCreada, ultimaVentaCreada.detalles)
+    } catch (error) {
+      console.error('❌ Error al generar PDF:', error)
+      alert(`❌ Error al generar PDF: ${error.message}`)
     }
   }
 
@@ -572,6 +739,16 @@ const Pedidos = () => {
                 <button onClick={() => openModal('edit', venta)} className="btn-primary btn-small">
                   ✏️ Editar
                 </button>
+                <button 
+                  onClick={async () => {
+                    const detalles = await cargarDetallesVenta(venta._id || venta.id)
+                    verTicketPDF(venta, detalles)
+                  }} 
+                  className="btn-info btn-small"
+                  title="Ver ticket en PDF (58mm)"
+                >
+                  🗃️ PDF
+                </button>
                 <button onClick={() => openModal('delete', venta)} className="btn-danger btn-small">
                   🗑️ Eliminar
                 </button>
@@ -708,9 +885,6 @@ const Pedidos = () => {
                             <span className="detalle-cantidad">x{detalle.cantidad}</span>
                             <span className="detalle-precio">${detalle.precio.toFixed(2)}</span>
                             <span className="detalle-subtotal">${(detalle.cantidad * detalle.precio).toFixed(2)}</span>
-                            {detalle.observaciones && (
-                              <span className="detalle-observaciones">Obs: {detalle.observaciones}</span>
-                            )}
                           </div>
                         ))}
                       </div>
@@ -738,6 +912,20 @@ const Pedidos = () => {
                   <button onClick={handleSubmit} className="btn-primary">
                     {modalType === 'create' ? 'Crear Pedido' : 'Actualizar Pedido'}
                   </button>
+                  {modalType === 'create' && (
+                    <button onClick={handleSaveAndPrint} className="btn-success">
+                      🖨️ Guardar e Imprimir
+                    </button>
+                  )}
+                  {modalType === 'create' && ultimaVentaCreada && (
+                    <button 
+                      onClick={generarPDFUltimaVenta}
+                      className="btn-info"
+                      title="Generar PDF del pedido creado"
+                    >
+                      🗃️ Ver PDF
+                    </button>
+                  )}
                 </>
               )}
 

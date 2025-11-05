@@ -1,10 +1,11 @@
 import useFetch from '../hooks/usefetch'
 import { useState } from 'react'
+import { getApiUrl } from '../config/api.js'
 import './producto.css'
 
 function Productos() {
   const [refreshKey, setRefreshKey] = useState(0) // Para forzar recargas
-  const { data: productos, loading, error } = useFetch(`http://localhost:5000/api/productos?refresh=${refreshKey}`)
+  const { data: productos, loading, error } = useFetch(`${getApiUrl('/api/productos')}?refresh=${refreshKey}`)
   const [productosDisponibilidad, setProductosDisponibilidad] = useState({})
   
   // Estados para CRUD
@@ -50,10 +51,10 @@ function Productos() {
 
       // Llamada a la API para actualizar en el servidor
       const datosActualizacion = { disponibilidad: nuevaDisponibilidad } // ← Cambiado a "disponibilidad"
-      console.log(`🌐 Enviando solicitud PUT a: http://localhost:5000/api/productos/${productoId}`)
+      console.log(`🌐 Enviando solicitud PUT a: ${getApiUrl(`/api/productos/${productoId}`)}`)
       console.log(`📦 Datos a enviar:`, datosActualizacion)
       
-      const response = await fetch(`http://localhost:5000/api/productos/${productoId}`, {
+      const response = await fetch(getApiUrl(`/api/productos/${productoId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(datosActualizacion)
@@ -154,10 +155,10 @@ function Productos() {
   // Función para crear producto
   const createProduct = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/productos', {
+      const response = await fetch(getApiUrl('/api/productos'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(nuevoProducto)
       })
 
       if (!response.ok) throw new Error('Error al crear producto')
@@ -174,7 +175,7 @@ function Productos() {
   const updateProduct = async () => {
     try {
       const productoId = obtenerIdProducto(selectedProduct)
-      const response = await fetch(`http://localhost:5000/api/productos/${productoId}`, {
+      const response = await fetch(getApiUrl(`/api/productos/${productoId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -194,7 +195,7 @@ function Productos() {
   const deleteProduct = async () => {
     try {
       const productoId = obtenerIdProducto(selectedProduct)
-      const response = await fetch(`http://localhost:5000/api/productos/${productoId}`, {
+      const response = await fetch(getApiUrl(`/api/productos/${productoId}`), {
         method: 'DELETE'
       })
 

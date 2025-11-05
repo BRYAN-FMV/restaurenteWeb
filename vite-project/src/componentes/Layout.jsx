@@ -2,6 +2,8 @@ import { useState } from 'react'
 import Sidebar from '../componentes/sidebar'
 import Productos from '../pantallas/productos'
 import Pedidos from '../pantallas/pedido'
+import Dashboard from '../pantallas/dashboard'
+import Compras from '../pantallas/compras'
 import './Layout.css'
 
 function Layout() {
@@ -9,6 +11,8 @@ function Layout() {
 
   const renderContent = () => {
     switch (activeSection) {
+      case 'dashboard':
+        return <Dashboard />
       case 'inicio':
         return (
           <div className="content-section">
@@ -46,6 +50,8 @@ function Layout() {
         )
       case 'pedidos':
         return <Pedidos />
+      case 'compras':
+        return <Compras />
       case 'clientes':
         return (
           <div className="content-section">

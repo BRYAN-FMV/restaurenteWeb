@@ -6,11 +6,13 @@ function Sidebar({ activeSection, onSectionChange }) {
 
   const menuItems = [
     { id: 'inicio', label: 'Inicio', icon: '🏠' },
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'productos', label: 'Productos', icon: '🍽️' },
     { id: 'categorias', label: 'Categorías', icon: '📂' },
     { id: 'pedidos', label: 'Pedidos', icon: '📋' },
+    { id: 'compras', label: 'Compras', icon: '🛒' },
     { id: 'clientes', label: 'Clientes', icon: '👥' },
-    { id: 'reportes', label: 'Reportes', icon: '📊' },
+    { id: 'reportes', label: 'Reportes', icon: '📈' },
     { id: 'configuracion', label: 'Configuración', icon: '⚙️' }
   ]
 
