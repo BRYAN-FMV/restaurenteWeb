@@ -29,15 +29,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: './vite-project/package-lock.json'
       
-      - name: Clean install
+      - name: Install dependencies
         working-directory: ./vite-project
         run: |
           rm -rf node_modules package-lock.json
-          npm install --ignore-optional
-      
-      - name: Install build dependencies
-        working-directory: ./vite-project
-        run: npm install @rollup/rollup-linux-x64-gnu --save-optional
+          npm install --ignore-scripts
       
       - name: Build
         working-directory: ./vite-project
