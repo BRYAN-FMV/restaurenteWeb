@@ -1,6 +1,5 @@
 name: Deploy to GitHub Pages
 
-# Workflow for deploying Vite React app to GitHub Pages
 on:
   push:
     branches: [ main ]
