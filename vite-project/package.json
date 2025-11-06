@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.1",
-    "node-thermal-printer": "^4.5.0",
-    "printer": "^0.4.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
+  },
+  "optionalDependencies": {
+    "node-thermal-printer": "^4.5.0",
+    "printer": "^0.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
