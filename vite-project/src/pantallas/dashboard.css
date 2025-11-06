@@ -78,6 +78,7 @@
   border: 2px solid #e1e5e9;
   border-radius: 10px;
   font-size: 14px;
+  color: #000000;
   transition: all 0.3s ease;
   background: white;
 }

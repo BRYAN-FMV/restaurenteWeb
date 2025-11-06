@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { PDFDownloadLink, pdf } from '@react-pdf/renderer'
+import { pdf } from '@react-pdf/renderer'
 import useFetch from '../hooks/usefetch'
 import TicketPDF from '../componentes/TicketPDF'
 import { getApiUrl } from '../config/api.js'
@@ -27,7 +27,6 @@ const Pedidos = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [filtroEntrega, setFiltroEntrega] = useState('')
   const [filtroFecha, setFiltroFecha] = useState('hoy')
-  const [shouldPrintAfterSave, setShouldPrintAfterSave] = useState(false)
 
   const reloadData = () => {
     setRefreshKey(prev => prev + 1)
@@ -50,10 +49,6 @@ const Pedidos = () => {
       }
     }
   }, [ventas, refreshKey])
-
-  const reloadDataAndDetails = async () => {
-    reloadData()
-  }
 
   // Función para cargar los detalles de una venta específica
   const cargarDetallesVenta = async (ventaId) => {
@@ -513,31 +508,6 @@ const Pedidos = () => {
     }
   }
 
-  // Función para generar y descargar PDF
-  const generarTicketPDF = async (venta, detalles) => {
-    try {
-      console.log('� Generando PDF para ticket...')
-      
-      // Generar el PDF
-      const pdfBlob = await pdf(<TicketPDF venta={venta} detalles={detalles} />).toBlob()
-      
-      // Crear URL del blob y descargar
-      const url = URL.createObjectURL(pdfBlob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `ticket-${venta.cliente}-${new Date().toISOString().slice(0, 10)}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-      
-      console.log('✅ PDF generado y descargado correctamente')
-    } catch (error) {
-      console.error('❌ Error al generar PDF:', error)
-      alert(`❌ Error al generar PDF: ${error.message}`)
-    }
-  }
-
   // Función para abrir PDF en nueva ventana
   const verTicketPDF = async (venta, detalles) => {
     try {
@@ -631,11 +601,6 @@ const Pedidos = () => {
     }
     return iconos[tipoEntrega] || '🚚'
   }
-
-  const productosFiltrados = productos?.filter(producto =>
-    producto.nombre.toLowerCase().includes(searchTerm.toLowerCase()) && 
-    producto.disponibilidad === true
-  ) || []
 
   if (loadingVentas || loadingProductos) {
     return (

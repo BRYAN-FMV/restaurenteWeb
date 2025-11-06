@@ -99,16 +99,6 @@ const TicketPDF = ({ venta, detalles = [] }) => {
     });
   };
 
-  const obtenerTipoEntrega = (tipoEntrega) => {
-    const tipos = {
-      'recoger en comedor': 'Recoger en comedor',
-      'comer en el lugar': 'Comer en el lugar',
-      'domicilio 1': 'Domicilio 1',
-      'domicilio 2': 'Domicilio 2'
-    };
-    return tipos[tipoEntrega] || tipoEntrega;
-  };
-
   return (
     <Document>
       <Page size={[164, 700]} style={styles.page}>

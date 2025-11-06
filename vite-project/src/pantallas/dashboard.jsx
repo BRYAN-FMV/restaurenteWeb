@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import useFetch from '../hooks/usefetch'
 import { getApiUrl } from '../config/api.js'
 import './dashboard.css'
@@ -414,7 +414,7 @@ const Dashboard = () => {
                 {ventasFiltradas
                   .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
                   .slice(0, 5)
-                  .map((venta, index) => (
+                  .map((venta) => (
                     <div key={venta._id || venta.id} className="activity-item">
                       <div className="activity-icon">🧾</div>
                       <div className="activity-details">

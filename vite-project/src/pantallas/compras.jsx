@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import useFetch from '../hooks/usefetch'
 import { getApiUrl } from '../config/api.js'
 import './compras.css'

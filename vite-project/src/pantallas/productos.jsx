@@ -92,7 +92,7 @@ function Productos() {
     const productoId = obtenerIdProducto(producto, index)
     
     // Verificar si hay override local, sino usar valor de la DB (usar "disponibilidad" de la DB)
-    const disponibilidadLocal = productosDisponibilidad.hasOwnProperty(productoId) 
+    const disponibilidadLocal = Object.prototype.hasOwnProperty.call(productosDisponibilidad, productoId)
       ? productosDisponibilidad[productoId]
       : producto.disponibilidad // ← Cambiado a "disponibilidad"
 
@@ -158,7 +158,7 @@ function Productos() {
       const response = await fetch(getApiUrl('/api/productos'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nuevoProducto)
+        body: JSON.stringify(formData)
       })
 
       if (!response.ok) throw new Error('Error al crear producto')
