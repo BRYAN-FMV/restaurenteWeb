@@ -374,7 +374,7 @@ const Pedidos = () => {
       if (shouldPrint) {
         console.log('🖨️ Generando PDF para abrir automáticamente...')
         try {
-          const blob = await pdf(<TicketPDF venta={ventaParaPDF} />).toBlob()
+          const blob = await pdf(<TicketPDF venta={ventaParaPDF} detalles={ventaParaPDF.detalles} />).toBlob()
           const url = URL.createObjectURL(blob)
           
           // Abrir el PDF en una nueva pestaña
