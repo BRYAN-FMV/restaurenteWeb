@@ -28,11 +28,14 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: './vite-project/package-lock.json'
       
       - name: Install dependencies
+        working-directory: ./vite-project
         run: npm ci
       
       - name: Build
+        working-directory: ./vite-project
         run: npm run build
         env:
           NODE_ENV: production
@@ -43,7 +46,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'
+          path: './vite-project/dist'
       
       - name: Deploy to GitHub Pages
         id: deployment
