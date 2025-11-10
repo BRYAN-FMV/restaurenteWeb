@@ -786,7 +786,7 @@ const Pedidos = () => {
                       <input
                         type="number"
                         min="1"
-                        value={cantidad}
+                        value={cantidad === 1 ? '' : cantidad}
                         onChange={(e) => setCantidad(parseInt(e.target.value) || 1)}
                         placeholder="Cantidad"
                       />
